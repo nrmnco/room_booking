@@ -1,16 +1,18 @@
-from rest_framework import generics, permissions, viewsets, status
+from django.contrib.auth.models import User
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
-from .serializers import UserRegistrationSerializer, BookingSerializer
-from django.contrib.auth.models import User
-from .models import Booking
 from rooms.models import Room
-from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
+
+from .models import Booking
+from .serializers import BookingSerializer
+
 
 class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
+
 
 class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
@@ -21,51 +23,50 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Booking.objects.all()
         return Booking.objects.filter(user=self.request.user)
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: BookingSerializer) -> None:
         serializer.save(user=self.request.user)
 
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name='check_in',
+                name="check_in",
                 type=OpenApiTypes.DATE,
                 location=OpenApiParameter.QUERY,
-                description='Check-in date (YYYY-MM-DD)',
-                required=True
+                description="Check-in date (YYYY-MM-DD)",
+                required=True,
             ),
             OpenApiParameter(
-                name='check_out',
+                name="check_out",
                 type=OpenApiTypes.DATE,
                 location=OpenApiParameter.QUERY,
-                description='Check-out date (YYYY-MM-DD)',
-                required=True
+                description="Check-out date (YYYY-MM-DD)",
+                required=True,
             ),
             OpenApiParameter(
-                name='capacity',
+                name="capacity",
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
-                description='Minimum room capacity',
-                required=False
+                description="Minimum room capacity",
+                required=False,
             ),
         ],
-        description='Search for available rooms in a given date range'
+        description="Search for available rooms in a given date range",
     )
-    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
-    def available_rooms(self, request):
-        check_in = request.query_params.get('check_in')
-        check_out = request.query_params.get('check_out')
-        capacity = request.query_params.get('capacity')
+    @action(detail=False, methods=["get"], permission_classes=[permissions.AllowAny])
+    def available_rooms(self, request) -> Response:
+        check_in = request.query_params.get("check_in")
+        check_out = request.query_params.get("check_out")
+        capacity = request.query_params.get("capacity")
 
         if not check_in or not check_out:
             return Response(
                 {"error": "Please provide check_in and check_out dates"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         booked_rooms_ids = Booking.objects.filter(
-            check_in__lt=check_out,
-            check_out__gt=check_in
-        ).values_list('room_id', flat=True)
+            check_in__lt=check_out, check_out__gt=check_in
+        ).values_list("room_id", flat=True)
 
         available_rooms = Room.objects.exclude(id__in=booked_rooms_ids)
 
@@ -73,5 +74,6 @@ class BookingViewSet(viewsets.ModelViewSet):
             available_rooms = available_rooms.filter(capacity__gte=capacity)
 
         from rooms.serializers import RoomSerializer
+
         serializer = RoomSerializer(available_rooms, many=True)
         return Response(serializer.data)
